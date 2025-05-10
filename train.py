@@ -32,7 +32,7 @@ def evaluate(eval_loader, model):
         losses = torch.zeros(len(list(eval_loader)))
         for j, batch in enumerate(eval_loader):
             x = batch['input_ids']
-            y = batch['input_ids']
+            y = batch['targets']
             attention_mask = batch['attention_mask']
 
             x = x.to(device)

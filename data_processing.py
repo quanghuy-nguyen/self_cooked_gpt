@@ -103,6 +103,12 @@ if __name__ == "__main__":
     tokenizer.pad_token = tokenizer.eos_token
     train_loader, val_loader = get_loader(train_path, val_path, tokenizer, 32, 2)
 
+    train_len = len(list(train_loader))
+    val_len = len(list(val_loader))
+
+    print("train_len: ", train_len)
+    print("val_len: ", val_len)
+
     for batch in train_loader:
         input_ids = batch['input_ids']
         targets = batch['targets']
