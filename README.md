@@ -1,1 +1,1 @@
-This project focuses on recreat a tiny model
+This project focuses on recreating a tiny model
