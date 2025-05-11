@@ -27,18 +27,26 @@ if os.path.exists(model_path):
 model = m.to(device)
 
 
-input_text = "How are you?"
+user_tokens = tokenizer.encode("\nUser:", add_special_tokens=False)
+user_tokens = torch.tensor(user_tokens, dtype=torch.long, device=device)
 
-PROMPT = f"User: {input_text}\nBot: "
 
-encoded_text = tokenizer(
-    PROMPT, 
-    padding=False,
-    return_tensors='pt'
-)
+while True:
+    input_text = input("User: ")
+    if input_text.lower() == "exit":
+        break
 
-context = encoded_text['input_ids']
-print(context.shape)
+    PROMPT = f"User: {input_text}\nBot: "
 
-answer = model.generate(context, 20)
-print(decode_token_ids(answer[0], tokenizer))
+    encoded_text = tokenizer(
+        PROMPT, 
+        padding=False,
+        return_tensors='pt'
+    )
+
+    last_tokens = user_tokens.unsqueeze(0)
+
+    context = encoded_text['input_ids']
+
+    answer = model.generate(context, 100, last_tokens)
+    print("Bot:", decode_token_ids(answer[0], tokenizer).strip())
