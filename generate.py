@@ -46,7 +46,7 @@ while True:
 
     last_tokens = user_tokens.unsqueeze(0)
 
-    context = encoded_text['input_ids']
+    context = encoded_text['input_ids'].to(device)
 
     answer = model.generate(context, 100, last_tokens)
     print("Bot:", decode_token_ids(answer[0], tokenizer).strip())
