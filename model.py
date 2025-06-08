@@ -164,12 +164,15 @@ if __name__ == "__main__":
 
 
     logits, loss = gpt(x, y, attention_mask)
-    g = gpt.generate(context, 10)
+    num_params = sum(p.numel() for p in gpt.parameters())
+    num_trainable_params = sum(p.numel() for p in gpt.parameters() if p.requires_grad)
+    print(f"Num params: {num_params}")
+    print(f"Num trainable params: {num_trainable_params}")
 
 
-    print("GPT logits: ", logits.shape)
-    print("GPT loss: ", loss)
-    print("GPT generate: ", g.shape)
+    print(f"GPT logits: {logits.shape}")
+    print(f"GPT loss: {loss.item():.4f}")
+
 
     
 
