@@ -1,26 +1,20 @@
 import os
 import torch
-from model import GPT
+from model import GPT, GPTConfig
 from data_processing import decode_token_ids
 from transformers import GPT2Tokenizer
 
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-embed_size = 64
-num_heads = 1
-num_layers = 1
-batch_size = 4
-block_size = 128
-max_len = 128
-dropout = 0.3
 
 model_path = 'best_val_model.pt'
 
 tokenizer = GPT2Tokenizer.from_pretrained('gpt2')
 tokenizer.pad_token = tokenizer.eos_token
-vocab_size = tokenizer.vocab_size
 
-m = GPT(embed_size, vocab_size, block_size, num_heads, num_layers, dropout=dropout)
+gpt_config = GPTConfig()
+
+m = GPT(gpt_config)
 if os.path.exists(model_path):
     m.load_state_dict(torch.load(model_path, map_location=device))
 
