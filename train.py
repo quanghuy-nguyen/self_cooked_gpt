@@ -3,20 +3,13 @@ import math
 import torch
 import torch.optim as optim
 from transformers import GPT2Tokenizer
-from model import GPT
+from model import GPT, GPTConfig
 from data_processing import get_loader, decode_token_ids
 from torch.cuda.amp import GradScaler, autocast
 from tqdm import tqdm
 
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-embed_size = 64
-num_heads = 1
-num_layers = 1
-batch_size = 4
-block_size = 128
-max_len = 128
-dropout = 0.3
 
 learning_rate = 3e-4
 num_epochs = 2
@@ -83,13 +76,15 @@ def main():
     tokenizer.pad_token = tokenizer.eos_token
     vocab_size = tokenizer.vocab_size
 
+    gpt_config = GPTConfig()
+
     train_loader, val_loader = get_loader(train_path, 
                                           val_path, 
                                           tokenizer, 
-                                          max_len=max_len, 
-                                          batch_size=batch_size)
+                                          max_len=gpt_config.max_len, 
+                                          batch_size=gpt_config.batch_size)
     
-    m = GPT(embed_size, vocab_size, block_size, num_heads, num_layers, dropout=dropout)
+    m = GPT(gpt_config)
     if os.path.exists(model_path):
         m.load_state_dict(torch.load(model_path, map_location=device))
     model = m.to(device)
@@ -109,7 +104,7 @@ def main():
         if val_loss < best_val_loss:
             best_val_loss = val_loss
             torch.save(model.state_dict(), model_path)
-            wait = 0
+            wait = 0 # Reset wait to 0
         else:
             wait += 1
             if wait > patience:

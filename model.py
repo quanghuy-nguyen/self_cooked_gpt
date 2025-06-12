@@ -3,21 +3,34 @@ import torch
 import torch.nn as nn
 from torch.nn import functional as F
 from transformers import GPT2Tokenizer
+from dataclasses import dataclass
 
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
+@dataclass
+class GPTConfig:
+    vocab_size: int = 50257 # GPT2 vocab size
+    embed_size: int = 64
+    num_heads: int = 1
+    num_layers: int = 1
+    head_size: int = embed_size//num_heads
+    batch_size: int = 4
+    block_size: int = 128
+    max_len: int = 128
+    dropout: float = 0.3
+    bias: bool = False
 
 class Head(nn.Module):
-    def __init__(self, embed_size, block_size, head_size, dropout=0.3):
+    def __init__(self, config):
         super().__init__()
-        self.dropout_value = dropout
-        self.query = nn.Linear(embed_size, head_size)
-        self.key = nn.Linear(embed_size, head_size)
-        self.value = nn.Linear(embed_size, head_size)
-        self.dropout = nn.Dropout(dropout)
+        self.dropout_value = config.dropout
+        self.query = nn.Linear(config.embed_size, config.head_size, bias=config.bias)
+        self.key = nn.Linear(config.embed_size, config.head_size, bias=config.bias)
+        self.value = nn.Linear(config.embed_size, config.head_size, bias=config.bias)
+        self.dropout = nn.Dropout(config.dropout)
         self.flash = hasattr(torch.nn.functional, 'scaled_dot_product_attention')
-        self.register_buffer('tril', torch.tril(torch.ones((block_size, block_size))))
+        self.register_buffer('tril', torch.tril(torch.ones((config.block_size, config.block_size))))
 
     def forward(self, x, attention_mask=None):
         B, T, C = x.shape
@@ -48,11 +61,11 @@ class Head(nn.Module):
     
 
 class MultiHeadAttention(nn.Module):
-    def __init__(self, embed_size, head_size, block_size, num_heads, dropout=0.3):
+    def __init__(self, config):
         super().__init__()
-        self.heads = nn.ModuleList([Head(embed_size, block_size, head_size, dropout=dropout) for _ in range(num_heads)])
-        self.linear = nn.Linear(head_size*num_heads, embed_size)
-        self.dropout = nn.Dropout(dropout)
+        self.heads = nn.ModuleList([Head(config) for _ in range(config.num_heads)])
+        self.linear = nn.Linear(config.head_size*config.num_heads, config.embed_size, bias=config.bias)
+        self.dropout = nn.Dropout(config.dropout)
 
     def forward(self, x, attention_mask):
         x = torch.cat([head(x, attention_mask) for head in self.heads], dim=-1)
@@ -62,13 +75,13 @@ class MultiHeadAttention(nn.Module):
     
 
 class FeedForward(nn.Module):
-    def __init__(self, embed_size, dropout=0.3):
+    def __init__(self, config):
         super().__init__()
         self.net = nn.Sequential(
-            nn.Linear(embed_size, embed_size*4),
+            nn.Linear(config.embed_size, config.embed_size*4, bias=config.bias),
             nn.GELU(),
-            nn.Linear(embed_size*4, embed_size),
-            nn.Dropout(dropout)
+            nn.Linear(config.embed_size*4, config.embed_size, bias=config.bias),
+            nn.Dropout(config.dropout)
         )
 
     def forward(self, x):
@@ -77,13 +90,12 @@ class FeedForward(nn.Module):
 
 
 class Block(nn.Module):
-    def __init__(self, embed_size, block_size, num_heads, dropout=0.3):
+    def __init__(self, config):
         super().__init__()
-        head_size = embed_size//num_heads
-        self.multi_heads = MultiHeadAttention(embed_size, head_size, block_size, num_heads, dropout=dropout)
-        self.ffw = FeedForward(embed_size, dropout=dropout)
-        self.ln1 = nn.LayerNorm(embed_size)
-        self.ln2 = nn.LayerNorm(embed_size)
+        self.multi_heads = MultiHeadAttention(config)
+        self.ffw = FeedForward(config)
+        self.ln1 = nn.LayerNorm(config.embed_size)
+        self.ln2 = nn.LayerNorm(config.embed_size)
         
     def forward(self, x, attention_mask):
         x = x + self.multi_heads(self.ln1(x), attention_mask)
@@ -92,14 +104,14 @@ class Block(nn.Module):
     
 
 class GPT(nn.Module):
-    def __init__(self, embed_size, vocab_size, block_size, num_heads, num_layers, dropout=0.3):
+    def __init__(self, config):
         super().__init__()
-        self.block_size = block_size
-        self.token_embedding = nn.Embedding(vocab_size, embed_size)
-        self.positional_embedding = nn.Embedding(block_size, embed_size)
-        self.blocks = nn.Sequential(*[Block(embed_size, block_size, num_heads, dropout=dropout) for _ in range(num_layers)])
-        self.ln_f = nn.LayerNorm(embed_size)
-        self.linear_f = nn.Linear(embed_size, vocab_size)
+        self.block_size = config.block_size
+        self.token_embedding = nn.Embedding(config.vocab_size, config.embed_size)
+        self.positional_embedding = nn.Embedding(config.block_size, config.embed_size)
+        self.blocks = nn.Sequential(*[Block(config) for _ in range(config.num_layers)])
+        self.ln_f = nn.LayerNorm(config.embed_size)
+        self.linear_f = nn.Linear(config.embed_size, config.vocab_size, bias=config.bias)
         self.linear_f.weight = self.token_embedding.weight  # weight tying
 
         self.apply(self._init_weights)
@@ -153,26 +165,16 @@ class GPT(nn.Module):
 
 
 if __name__ == "__main__":
-    tokenizer = GPT2Tokenizer.from_pretrained('gpt2')
-    tokenizer.pad_token = tokenizer.eos_token
-    vocab_size = tokenizer.vocab_size
-    embed_size = 64
-    num_heads = 1
-    num_layers = 1
-    batch_size = 4
-    block_size = 128
-    max_len = 128
-    dropout = 0.3
+    gpt_config = GPTConfig()
+    B, T, C = 3, 4, gpt_config.embed_size
 
-    B, T, C = 3, 4, embed_size
-
-    embed_x = torch.randn((B, T, embed_size))
+    embed_x = torch.randn((B, T, gpt_config.embed_size))
     x = torch.randint(0, 9, (3, 4), dtype=torch.long)
     y = torch.randint(0, 9, (3, 4), dtype=torch.long)
     attention_mask = torch.ones((B, T))
     context = torch.zeros((1, 1), dtype=torch.long, device=device)
 
-    gpt = GPT(embed_size, vocab_size, block_size, num_heads, num_layers, dropout=dropout)
+    gpt = GPT(gpt_config)
 
 
     logits, loss = gpt(x, y, attention_mask)
