@@ -1,9 +1,11 @@
 import os
+import math
 import torch
 import torch.optim as optim
 from transformers import GPT2Tokenizer
 from model import GPT
 from data_processing import get_loader, decode_token_ids
+from torch.cuda.amp import GradScaler, autocast
 from tqdm import tqdm
 
 
@@ -44,12 +46,13 @@ def evaluate(eval_loader, model):
         out[i] = losses.mean()
 
     model.train()
-    out = out.mean()
+    val_loss = out.mean().item()
+    perplexity = math.exp(val_loss)
 
-    return out
+    return val_loss, perplexity
 
 
-def train_model(train_loader, model, optimizer, scheduler):
+def train_model(train_loader, model, optimizer, scheduler, scaler):
     for i, batch in tqdm(enumerate(train_loader)):
         x = batch['input_ids']
         y = batch['targets']     
@@ -59,15 +62,20 @@ def train_model(train_loader, model, optimizer, scheduler):
         y = y.to(device)
         attention_mask = attention_mask.to(device)
 
-        _, loss = model(x, y, attention_mask)
+        optimizer.zero_grad(set_to_none=True)
+
+        with autocast(): # Make model run FP16 automaticaly
+            _, loss = model(x, y, attention_mask)
+
+        scaler.scale(loss).backward() # Using scale to scale loss before backward() to avoid gradient underflow (too small loss)
+        scaler.step(optimizer)
+        scaler.update()
 
         if i % 100 == 0:
             lr = scheduler.get_last_lr()[0]
             print(f"Step: {i}, train_loss = {loss}, lr = {lr}")
 
-        optimizer.zero_grad(set_to_none=True)
-        loss.backward()
-        optimizer.step()
+        scheduler.step()
 
 
 def main():
@@ -87,17 +95,27 @@ def main():
     model = m.to(device)
 
     optimizer = optim.AdamW(model.parameters(), lr=learning_rate)
-    scheduler = optim.lr_scheduler.StepLR(optimizer, 10000, gamma=0.9)
+    scheduler = optim.lr_scheduler.StepLR(optimizer, 8000, gamma=0.9)
+    scaler = GradScaler()
 
     best_val_loss = float('inf')
+    wait = 0 # For early stopping
+    patience = 3
     for epoch in range(num_epochs):
-        train_model(train_loader, model, optimizer, scheduler)
-        val_loss = evaluate(val_loader, model)
-        print(f"Epoch: {epoch}, val_loss = {val_loss}")
+        train_model(train_loader, model, optimizer, scheduler, scaler)
+        val_loss, perplexity = evaluate(val_loader, model)
+        print(f"Epoch: {epoch} | Val loss = {val_loss} | Perplexity = {perplexity}")
 
         if val_loss < best_val_loss:
             best_val_loss = val_loss
             torch.save(model.state_dict(), model_path)
+            wait = 0
+        else:
+            wait += 1
+            if wait > patience:
+                print("Overfitting!!!!!")
+                break
+
 
 
 if __name__ == "__main__":

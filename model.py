@@ -2,6 +2,7 @@ import os
 import torch
 import torch.nn as nn
 from torch.nn import functional as F
+from transformers import GPT2Tokenizer
 
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
@@ -10,10 +11,12 @@ device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 class Head(nn.Module):
     def __init__(self, embed_size, block_size, head_size, dropout=0.3):
         super().__init__()
+        self.dropout_value = dropout
         self.query = nn.Linear(embed_size, head_size)
         self.key = nn.Linear(embed_size, head_size)
         self.value = nn.Linear(embed_size, head_size)
         self.dropout = nn.Dropout(dropout)
+        self.flash = hasattr(torch.nn.functional, 'scaled_dot_product_attention')
         self.register_buffer('tril', torch.tril(torch.ones((block_size, block_size))))
 
     def forward(self, x, attention_mask=None):
@@ -21,24 +24,27 @@ class Head(nn.Module):
 
         q = self.query(x)
         k = self.key(x)
-
-        causal_mask = self.tril[:T, :T].unsqueeze(0).expand(B, -1, -1)
-
-        wei = q @ k.transpose(-2, -1) * k.shape[-1]**-0.5 
-        wei = wei.masked_fill(causal_mask==0, float('-inf'))
-
-        if attention_mask is not None:
-            attention_mask = attention_mask.unsqueeze(1).expand(B, T, T)
-            wei = wei.masked_fill(attention_mask==0, float('-inf'))
-
-        wei = F.softmax(wei, dim=-1)
-        wei = self.dropout(wei)
-        
         v = self.value(x)
-        out = wei @ v
-        
 
-        return out
+        if self.flash:
+            y = torch.nn.functional.scaled_dot_product_attention(q, k, v, attn_mask=None, dropout_p=self.dropout_value if self.training else 0, is_causal=True)
+        else:
+
+            causal_mask = self.tril[:T, :T].unsqueeze(0).expand(B, -1, -1)
+
+            y = q @ k.transpose(-2, -1) * k.shape[-1]**-0.5 
+            y = y.masked_fill(causal_mask==0, float('-inf'))
+
+            if attention_mask is not None:
+                attention_mask = attention_mask.unsqueeze(1).expand(B, T, T)
+                y = y.masked_fill(attention_mask==0, float('-inf'))
+
+            y = F.softmax(y, dim=-1)
+            y = self.dropout(y)
+        
+            y = y @ v
+        
+        return y
     
 
 class MultiHeadAttention(nn.Module):
@@ -60,7 +66,7 @@ class FeedForward(nn.Module):
         super().__init__()
         self.net = nn.Sequential(
             nn.Linear(embed_size, embed_size*4),
-            nn.ReLU(),
+            nn.GELU(),
             nn.Linear(embed_size*4, embed_size),
             nn.Dropout(dropout)
         )
@@ -94,6 +100,8 @@ class GPT(nn.Module):
         self.blocks = nn.Sequential(*[Block(embed_size, block_size, num_heads, dropout=dropout) for _ in range(num_layers)])
         self.ln_f = nn.LayerNorm(embed_size)
         self.linear_f = nn.Linear(embed_size, vocab_size)
+        self.linear_f.weight = self.token_embedding.weight  # weight tying
+
         self.apply(self._init_weights)
 
     def _init_weights(self, module):
@@ -145,13 +153,17 @@ class GPT(nn.Module):
 
 
 if __name__ == "__main__":
-    block_size = 128
+    tokenizer = GPT2Tokenizer.from_pretrained('gpt2')
+    tokenizer.pad_token = tokenizer.eos_token
+    vocab_size = tokenizer.vocab_size
     embed_size = 64
-    num_heads = 2
-    num_layers = 2
+    num_heads = 1
+    num_layers = 1
+    batch_size = 4
+    block_size = 128
+    max_len = 128
     dropout = 0.3
 
-    vocab_size = 888888 
     B, T, C = 3, 4, embed_size
 
     embed_x = torch.randn((B, T, embed_size))
