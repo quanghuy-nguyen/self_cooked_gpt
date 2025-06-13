@@ -92,7 +92,7 @@ def decode_token_ids(token_ids, tokenizer):
     return decoded_text
 
 
-def get_loader(paths, tokenizer, max_len, batch_size, shuflle=True):
+def get_large_dataset_loader(paths, tokenizer, max_len, batch_size, shuflle=True):
     train_text, val_text = get_processed_data(paths)
     train_dataset = TextData(train_text, tokenizer, max_len)
     val_dataset = TextData(val_text, tokenizer, max_len)
@@ -120,7 +120,7 @@ def get_loader(paths, tokenizer, max_len, batch_size, shuflle=True):
 if __name__ == "__main__":
     tokenizer = GPT2Tokenizer.from_pretrained('gpt2')
     tokenizer.pad_token = tokenizer.eos_token
-    train_loader, val_loader = get_loader(paths[:1], tokenizer, 128, 2)
+    train_loader, val_loader = get_large_dataset_loader(paths[:1], tokenizer, 128, 2)
 
     train_len = len(list(train_loader))
     val_len = len(list(val_loader))

@@ -5,6 +5,7 @@ import torch.optim as optim
 from transformers import GPT2Tokenizer
 from model import GPT, GPTConfig
 from data_processing import get_loader, decode_token_ids
+from new_large_dataset import get_large_dataset_loader, paths
 from torch.cuda.amp import GradScaler, autocast
 from tqdm import tqdm
 
@@ -78,8 +79,13 @@ def main():
 
     gpt_config = GPTConfig()
 
-    train_loader, val_loader = get_loader(train_path, 
-                                          val_path, 
+    # train_loader, val_loader = get_loader(train_path, 
+    #                                       val_path, 
+    #                                       tokenizer, 
+    #                                       max_len=gpt_config.max_len, 
+    #                                       batch_size=gpt_config.batch_size)
+
+    train_loader, val_loader = get_large_dataset_loader(paths,
                                           tokenizer, 
                                           max_len=gpt_config.max_len, 
                                           batch_size=gpt_config.batch_size)
