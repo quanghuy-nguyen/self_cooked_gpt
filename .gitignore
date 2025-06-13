@@ -2,3 +2,7 @@ best_val_model.pt
 train_dataset.csv
 val_dataset.csv
 vd.py
+qa_Appliances.json
+qa_Arts_Crafts_and_Sewing.json
+qa_Automotive.json
+qa_Sports_and_Outdoors.json
