@@ -122,11 +122,11 @@ if __name__ == "__main__":
     tokenizer.pad_token = tokenizer.eos_token
     train_loader, val_loader = get_large_dataset_loader(paths[:1], tokenizer, 128, 2)
 
-    train_len = len(list(train_loader))
-    val_len = len(list(val_loader))
+    # train_len = len(list(train_loader))
+    # val_len = len(list(val_loader))
 
-    print("train_len: ", train_len)
-    print("val_len: ", val_len)
+    # print("train_len: ", train_len)
+    # print("val_len: ", val_len)
 
     for batch in train_loader:
         input_ids = batch['input_ids']
@@ -138,8 +138,10 @@ if __name__ == "__main__":
         print("attention_mask: ", attention_mask)
         break
 
-    decoded_text = decode_token_ids(input_ids[0], tokenizer)
-    print(decoded_text)
+    decoded_text1 = decode_token_ids(input_ids[0], tokenizer)
+    decoded_text2 = decode_token_ids(input_ids[1], tokenizer)
+    print(decoded_text1)
+    print(decoded_text2)
 
 
 

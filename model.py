@@ -39,8 +39,14 @@ class Head(nn.Module):
         k = self.key(x)
         v = self.value(x)
 
+        if attention_mask is not None:
+                attention_mask = attention_mask.unsqueeze(1).expand(B, T, T)
+        else:
+            attention_mask = None
+
         if self.flash:
-            y = torch.nn.functional.scaled_dot_product_attention(q, k, v, attn_mask=None, dropout_p=self.dropout_value if self.training else 0, is_causal=True)
+            if attention_mask is not None:
+                y = torch.nn.functional.scaled_dot_product_attention(q, k, v, attn_mask=None, dropout_p=self.dropout_value if self.training else 0, is_causal=True)
         else:
 
             causal_mask = self.tril[:T, :T].unsqueeze(0).expand(B, -1, -1)
@@ -49,7 +55,6 @@ class Head(nn.Module):
             y = y.masked_fill(causal_mask==0, float('-inf'))
 
             if attention_mask is not None:
-                attention_mask = attention_mask.unsqueeze(1).expand(B, T, T)
                 y = y.masked_fill(attention_mask==0, float('-inf'))
 
             y = F.softmax(y, dim=-1)
@@ -109,7 +114,7 @@ class GPT(nn.Module):
         self.block_size = config.block_size
         self.token_embedding = nn.Embedding(config.vocab_size, config.embed_size)
         self.positional_embedding = nn.Embedding(config.block_size, config.embed_size)
-        self.blocks = nn.Sequential(*[Block(config) for _ in range(config.num_layers)])
+        self.blocks = nn.ModuleList([Block(config) for _ in range(config.num_layers)])
         self.ln_f = nn.LayerNorm(config.embed_size)
         self.linear_f = nn.Linear(config.embed_size, config.vocab_size, bias=config.bias)
         self.linear_f.weight = self.token_embedding.weight  # weight tying

@@ -61,7 +61,9 @@ def train_model(train_loader, model, optimizer, scheduler, scaler):
         with autocast(): # Make model run FP16 automaticaly
             _, loss = model(x, y, attention_mask)
 
-        scaler.scale(loss).backward() # Using scale to scale loss before backward() to avoid gradient underflow (too small loss)
+        scaler.scale(loss).backward() # Using scale to scale the loss before backward() to avoid gradient underflow (too small loss)
+        scaler.unscale_(optimizer) # Unscale the loss after scaling
+        torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0) # Using gradient cliping to avoid exploding gradients
         scaler.step(optimizer)
         scaler.update()
 
@@ -75,8 +77,7 @@ def train_model(train_loader, model, optimizer, scheduler, scaler):
 def main():
     tokenizer = GPT2Tokenizer.from_pretrained('gpt2')
     tokenizer.pad_token = tokenizer.eos_token
-    vocab_size = tokenizer.vocab_size
-
+    
     gpt_config = GPTConfig()
 
     # train_loader, val_loader = get_loader(train_path, 
@@ -89,6 +90,8 @@ def main():
                                           tokenizer, 
                                           max_len=gpt_config.max_len, 
                                           batch_size=gpt_config.batch_size)
+    print(f"Train len: {len(list(train_loader))}")
+    print(f"Val len: {len(list(val_loader))}")
     
     m = GPT(gpt_config)
     if os.path.exists(model_path):
