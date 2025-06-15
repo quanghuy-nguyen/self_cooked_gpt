@@ -6,6 +6,7 @@ from transformers import GPT2Tokenizer
 from model import GPT, GPTConfig
 from data_processing import get_loader, decode_token_ids
 from new_large_dataset import get_large_dataset_loader, paths
+from huggingface_dataset import get_huggingface_dataset_loader
 from torch.cuda.amp import GradScaler, autocast
 from tqdm import tqdm
 
@@ -86,12 +87,19 @@ def main():
     #                                       max_len=gpt_config.max_len, 
     #                                       batch_size=gpt_config.batch_size)
 
-    train_loader, val_loader = get_large_dataset_loader(paths,
-                                          tokenizer, 
+    # train_loader, val_loader = get_large_dataset_loader(paths,
+    #                                       tokenizer, 
+    #                                       max_len=gpt_config.max_len, 
+    #                                       batch_size=gpt_config.batch_size)
+    
+    train_loader, val_loader = get_huggingface_dataset_loader(tokenizer, 
                                           max_len=gpt_config.max_len, 
                                           batch_size=gpt_config.batch_size)
-    print(f"Train len: {len(list(train_loader))}")
-    print(f"Val len: {len(list(val_loader))}")
+    
+    train_len = len(list(train_loader))
+    val_len = len(list(val_loader))
+    print(f"Train len: {train_len}")
+    print(f"Val len: {val_len}")
     
     m = GPT(gpt_config)
     if os.path.exists(model_path):
